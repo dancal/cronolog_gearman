@@ -17,10 +17,11 @@
 #USES
 ##CRONOLOG CONFIG
 ###vi /etc/cronolog_gm.ini
-####[CGM]
-####Servers="10.128.5.11:4730"
-####WorkerCommand="cronolog_svr"
-####ExceptExt=""
+####[gearman]
+####servers="10.128.5.11:4730"
+####workercommand="cronolog_svr"
+####exceptext=""
+####timeout=1000
 
 ##APACHE CONFIG
 ###CustomLog "|cronolog --period=1minute /home/httpd/logs/access_log" combined env=!do_not_log
