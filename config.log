@@ -1,0 +1,40 @@
+This file contains any messages produced by compilers while
+running configure, to aid debugging if configure makes a mistake.
+
+configure:578: checking for a BSD compatible install
+configure:631: checking whether build environment is sane
+configure:688: checking whether make sets ${MAKE}
+configure:734: checking for working aclocal
+configure:747: checking for working autoconf
+configure:760: checking for working automake
+configure:773: checking for working autoheader
+configure:786: checking for working makeinfo
+configure:823: checking for gcc
+configure:936: checking whether the C compiler (gcc -I/usr/include/boost141 -I../iniparser/src -lgearman -L../iniparser -liniparser) works
+configure:952: gcc -o conftest -I/usr/include/boost141 -I../iniparser/src  -lgearman -L../iniparser -liniparser conftest.c  1>&5
+configure:978: checking whether the C compiler (gcc -I/usr/include/boost141 -I../iniparser/src -lgearman -L../iniparser -liniparser) is a cross-compiler
+configure:983: checking whether we are using GNU C
+configure:1011: checking whether gcc accepts -g
+configure:1054: checking for a BSD compatible install
+configure:1107: checking whether ln -s works
+configure:1130: checking for ranlib
+configure:1161: checking for perl
+configure:1199: checking how to run the C preprocessor
+configure:1279: checking for ANSI C header files
+configure:1383: checking whether stat file-mode macros are broken
+configure:1439: checking whether time.h and sys/time.h may both be included
+configure:1474: checking whether struct tm is in sys/time.h or time.h
+configure:1508: checking for tm_zone in struct tm
+configure:1581: checking for fcntl.h
+configure:1581: checking for limits.h
+configure:1581: checking for unistd.h
+configure:1620: checking for working const
+configure:1695: checking for size_t
+configure:1728: checking whether struct tm is in sys/time.h or time.h
+configure:1764: checking for strftime
+configure:1860: checking for vprintf
+configure:1967: checking for mkdir
+configure:1967: checking for mktime
+configure:1967: checking for putenv
+configure:2022: checking for strptime
+configure:2022: checking for localtime_r
