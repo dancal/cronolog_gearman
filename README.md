@@ -5,6 +5,7 @@
 ##need libgearman-devel
 ##nead boost144-devel
 
+#ApacheLog send to Gearman Server
 
 #INSTALL
 ###export CFLAGS="-I/usr/include/boost141 -I../iniparser/src"
