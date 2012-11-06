@@ -98,9 +98,6 @@
 int	new_log_file(const char *, const char *, mode_t, const char *,
 		     PERIODICITY, int, int, char *, size_t, time_t, time_t *);
 
-void create_example_ini_file(void);
-int  parse_ini_file(char * ini_name);
-
 /* Definition of version and usage messages */
 
 #ifndef _WIN32
@@ -327,8 +324,42 @@ main(int argc, char **argv)
     DEBUG(("Rotation period is per %d %s\n", period_multiple, periods[periodicity]));
 
 
-    /* Loop, waiting for data on standard input */
+	/*
+	  gearman collector
+	*/
+	char *servers;
+	char *target_worker;
+	char unique[128];
+	int gearman_opt_timeout;
 
+	gearman_return_t ret;
+	gearman_task_st *task = NULL;
+	gearman_task_st *task2 = NULL;
+	gearman_client_st gclient;
+
+	dictionary *ini = iniparser_load("/etc/cronolog_gm.ini");
+	servers			= iniparser_getstring(ini, "gearman:servers", NULL);
+	target_worker	= iniparser_getstring(ini, "gearman:workercommand", NULL);
+	gearman_opt_timeout = iniparser_getint(ini, "gearman:timeout", 3000);
+
+    if (gearman_client_create(&gclient) == NULL) {
+		DEBUG(("gearman_client_error"));
+	    exit(6);
+    }
+
+	gearman_client_set_timeout( &gclient, gearman_opt_timeout );
+
+	char * server  = strdup( servers );
+	char * host    = str_token( &server, ':' );
+	in_port_t port = ( in_port_t ) atoi( str_token( &server, 0 ) );
+
+  	ret = gearman_client_add_server(&gclient, host, port);
+  	if (ret != GEARMAN_SUCCESS ) {
+		DEBUG(("gearman_client_error"));
+	    exit(7);
+  	}
+
+    /* Loop, waiting for data on standard input */
     for (;;)
     {
 	/* Read a buffer's worth of log file data, exiting on errors
@@ -381,62 +412,24 @@ main(int argc, char **argv)
 	    exit(5);
 	}
 
-	/*
-	//gearman collector
-	*/
-	char unique[32];
-	char temp_buffer[32];
-	char target_worker[128];
-	gearman_return_t ret;
-	int gearman_opt_timeout = 3000;
-	char *servers;
-	char *s;
-
-	dictionary *ini = iniparser_load("/etc/cronolog_gm.ini");
-	servers			= iniparser_getstring(ini, "Section:Servers", NULL);
-
-	//WorkerCommand=""
-
-
-	gearman_client_st gclient;
-	gearman_task_st *task = NULL;
-
-	//snprintf( temp_buffer,sizeof( temp_buffer )-1,"type=eventhandler\ncommand_line=%s\n", "test");
-	snprintf( unique, sizeof( temp_buffer )-1, "%s-%s", servers, "cronolog");
-	snprintf( target_worker, sizeof(target_worker)-1, "%s", "servicegroup_test");
-	target_worker[sizeof( target_worker )-1]='\x0';
-
-    if (gearman_client_create(&gclient) == NULL) {
-		DEBUG(("gearman_client_error"));
-	    exit(6);
-    }
-
-	gearman_client_set_timeout( &gclient, gearman_opt_timeout );
-	//gearman_client_add_options(&gclient, GEARMAN_CLIENT_FREE_TASKS);
-	//gearman_client_set_workload_free_fn(&gclient, _client_free, NULL);
-
-	char * server  = strdup( servers );
-	char * host    = str_token( &server, ':' );
-	in_port_t port = ( in_port_t ) atoi( str_token( &server, 0 ) );
-
-  	ret = gearman_client_add_server(&gclient, host, port);
-  	if (ret != GEARMAN_SUCCESS ) {
-		DEBUG(("gearman_client_error"));
-	    exit(7);
-  	}
+	snprintf( unique,sizeof(read_buf)-1,"%s-%d", host, timestamp(time_now));
 
     //add the task
-    int ret2 = gearman_client_add_task_background(&gclient, task, NULL, target_worker, unique, ( void * )temp_buffer, ( size_t )strlen( temp_buffer ), &ret );
+    task2 = gearman_client_add_task(&gclient, task, NULL, target_worker, unique, ( void * )read_buf, strlen(read_buf), &ret );
 	gearman_client_run_tasks( &gclient );
  	if(gearman_client_error(&gclient) != NULL && strcmp(gearman_client_error(&gclient), "") != 0) { // errno is somehow empty, use error instead
 		DEBUG(("gearman_client_error"));
 	    exit(8);
     }
 
-    gearman_client_free(&gclient);
+	int ret3 = gearman_client_wait(&(gclient));
 	//gearman client end
 
+
+
     }
+
+    gearman_client_free(&gclient);
 
     /* NOTREACHED */
     return 1;

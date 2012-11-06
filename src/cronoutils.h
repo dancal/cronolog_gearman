@@ -172,7 +172,7 @@ time_t		start_of_this_period(time_t, PERIODICITY, int);
 void		print_debug_msg(char *msg, ...);
 time_t		parse_time(char *time_str, int);
 char 		*timestamp(time_t thetime);
-char *str_token( char **c, char delim );
+char 		*str_token( char **c, char delim );
 
 /* Global variables */
 
