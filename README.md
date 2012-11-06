@@ -19,7 +19,7 @@
 ##CRONOLOG CONFIG
 ###vi /etc/cronolog_gm.ini
 ####[gearman]
-####servers="10.128.5.11:4730"
+####servers="127.0.0.1:4730"
 ####workercommand="cronolog_svr"
 ####exceptext=""
 ####timeout=1000
