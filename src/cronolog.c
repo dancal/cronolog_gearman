@@ -331,6 +331,7 @@ main(int argc, char **argv)
 	char *target_worker;
 	char unique[128];
 	int gearman_opt_timeout;
+	char buffer[65536];
 
 	gearman_return_t ret;
 	gearman_task_st *task = NULL;
@@ -412,17 +413,18 @@ main(int argc, char **argv)
 	    exit(5);
 	}
 
-	snprintf( unique,sizeof(read_buf)-1,"%s-%d", host, timestamp(time_now));
+	if ( n_bytes_read > 10 ) {
 
-    //add the task
-    task2 = gearman_client_add_task(&gclient, task, NULL, target_worker, unique, ( void * )read_buf, strlen(read_buf), &ret );
-	gearman_client_run_tasks( &gclient );
- 	if(gearman_client_error(&gclient) != NULL && strcmp(gearman_client_error(&gclient), "") != 0) { // errno is somehow empty, use error instead
-		DEBUG(("gearman_client_error"));
-	    exit(8);
-    }
+	    //add the task
+    	task2 = gearman_client_add_task(&gclient, task, NULL, target_worker, NULL, ( void * )read_buf, n_bytes_read, &ret );
+		gearman_client_run_tasks( &gclient );
+	 	if(gearman_client_error(&gclient) != NULL && strcmp(gearman_client_error(&gclient), "") != 0) { // errno is somehow empty, use error instead
+			DEBUG(("gearman_client_error"));
+	    	exit(8);
+	    }
 
-	int ret3 = gearman_client_wait(&(gclient));
+		//int ret3 = gearman_client_wait(&(gclient));
+	}
 	//gearman client end
 
 
