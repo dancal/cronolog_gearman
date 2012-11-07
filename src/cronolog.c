@@ -97,8 +97,8 @@
 
 /* Forward function declaration */
 void DEBUGLOG( const char *buf, ... );
-int	new_log_file(const char *, const char *, mode_t, const char *, PERIODICITY, int, int, char *, size_t, time_t, time_t *);
 char *gzcompress( char *buffer, int length );
+int	new_log_file(const char *, const char *, mode_t, const char *, PERIODICITY, int, int, char *, size_t, time_t, time_t *);
 
 gearman_client_st gclient;
 char *job_handle;
@@ -110,21 +110,17 @@ char *debug_log_file;
 
 /* Definition of version and usage messages */
 
-#define emalloc(size)       	malloc(size)
-#define efree(ptr)          	free(ptr)
-#define erealloc(ptr, size)		__realloc(ptr,size)
-#define ecalloc(nmemb, size)                       calloc((nmemb), (size))
-#define safe_emalloc(nmemb, size, offset)          malloc((nmemb) * (size) + (offset))
-
 #define ZLIB_MODIFIER 			1000
-#define OS_CODE                 0x03 /* FIXME */
-#define GZIP_HEADER_LENGTH      10
-#define GZIP_FOOTER_LENGTH      8
+
+#define efree(ptr)          	free(ptr)
+#define emalloc(size)       	malloc(size)
+#define erealloc(ptr, size)		__realloc(ptr,size)
+#define safe_emalloc(nmemb, size, offset)          malloc((nmemb) * (size) + (offset))
 
 #ifndef _WIN32
 #define VERSION_MSG   	PACKAGE " version " VERSION "\n"
 #else
-#define VERSION_MSG      "cronolog version 0.1\n"
+#define VERSION_MSG      "cronolog_gearman version 0.1\n"
 #endif
 
 
@@ -186,9 +182,79 @@ static void zlib_free(voidpf opaque, voidpf address) {
     efree((void*)address);
 }
 
-/*
-	gearman collector
-*/
+void error_handling(char* message) {
+	fputs(message, stdout);
+	fputc('\n', stdout);
+	exit(1);
+}
+
+void DEBUGLOG( const char *buf, ... ) {
+
+	if ( debug_log_file == NULL ) { return; }
+
+	if ( DEBUG_MODE ) {
+
+		char buffer[8192];
+
+	 	va_list ap;
+    	va_start( ap, buf );
+	    vsnprintf( buffer + strlen( buffer ), sizeof( buffer ) - strlen( buffer ), buf, ap );
+    	va_end( ap );
+
+		FILE *fildes = fopen( debug_log_file, "a");
+		fprintf(fildes, "[gearman_client_error] %s\n", buffer);
+		fclose(fildes);
+	}
+
+}
+
+char *gzcompress( char *buffer, int length ) {
+
+	int status;
+	long level = Z_DEFAULT_COMPRESSION;
+	z_stream stream;
+    char *zipdata;
+
+    stream.data_type = Z_ASCII;
+    stream.zalloc = zlib_alloc;
+    stream.zfree  = zlib_free;
+    stream.opaque = (voidpf) Z_NULL;
+
+    stream.next_in = (Bytef *) buffer;
+    stream.avail_in = length;
+	stream.avail_out = stream.avail_in + (stream.avail_in / ZLIB_MODIFIER) + 15 + 1; /* room for \0 */
+
+    zipdata = (char *) emalloc(stream.avail_out);
+    if (!zipdata) {
+		return 0;
+    }
+	stream.next_out = zipdata;
+
+    /* init with -MAX_WBITS disables the zlib internal headers */
+    status = deflateInit2(&stream, level, Z_DEFLATED, -MAX_WBITS, MAX_MEM_LEVEL, 0);
+    if (status == Z_OK) {
+        status = deflate(&stream, Z_FINISH);
+        if (status != Z_STREAM_END) {
+            deflateEnd(&stream);
+            if (status == Z_OK) {
+                status = Z_BUF_ERROR;
+            }
+        } else {
+            status = deflateEnd(&stream);
+        }
+    }
+
+    if (status == Z_OK) {
+        zipdata = erealloc(zipdata,stream.total_out + 1); /* resize to buffer to the "right" size */
+        zipdata[ stream.total_out ] = '\0';
+		return zipdata;
+    } else {
+        efree(zipdata);
+		return NULL;
+    }
+
+}
+
 int createGearmanClient() {
 
     char *servers;
@@ -210,7 +276,7 @@ int createGearmanClient() {
     randnumber          = rand() % 100;
 
     if (gearman_client_create(&gclient) == NULL) {
-        DEBUGLOG(("gearman_client_create 1"));
+        DEBUGLOG("gearman_client_create 1");
 		return false;
     } else {
 
@@ -221,7 +287,7 @@ int createGearmanClient() {
 	    gearman_client_set_timeout( &gclient, gearman_opt_timeout );
 	    ret = gearman_client_add_server(&gclient, host, port);
     	if (ret != GEARMAN_SUCCESS) {
-        	DEBUGLOG(("gearman_client_add_server 2"));
+        	DEBUGLOG("gearman_client_add_server 2");
 			return false;
     	}
 
@@ -356,7 +422,6 @@ int main(int argc, char **argv) {
 		fprintf(stderr, USAGE_MSG, argv[0]);
 		exit(1);
     }
-    DEBUGLOG(VERSION_MSG);
 
     if (start_time) {
 		time_now = parse_time(start_time, use_american_date_formats);
@@ -376,7 +441,6 @@ int main(int argc, char **argv) {
     if (periodicity == UNKNOWN) {
 		periodicity = determine_periodicity(template);
     }
-
     DEBUGLOG(("periodicity = %d %s", period_multiple, periods[periodicity]));
 
     if (period_delay) {
@@ -516,75 +580,3 @@ int new_log_file(const char *template, const char *linkname, mode_t linktype, co
     return log_fd;
 }
 
-void error_handling(char* message) {
-	fputs(message, stdout);
-	fputc('\n', stdout);
-	exit(1);
-}
-
-void DEBUGLOG( const char *buf, ... ) {
-
-	if ( debug_log_file == NULL ) { return; }
-
-	if ( DEBUG_MODE ) {
-
-		char buffer[8192];
-
-	 	va_list ap;
-    	va_start( ap, buf );
-	    vsnprintf( buffer + strlen( buffer ), sizeof( buffer ) - strlen( buffer ), buf, ap );
-    	va_end( ap );
-
-		FILE *fildes = fopen( debug_log_file, "a");
-		fprintf(fildes, "[gearman_client_error] %s\n", buffer);
-		fclose(fildes);
-	}
-
-}
-
-char *gzcompress( char *buffer, int length ) {
-
-	int status;
-	long level = Z_DEFAULT_COMPRESSION;
-	z_stream stream;
-    char *zipdata, *s2;
-
-    stream.data_type = Z_ASCII;
-    stream.zalloc = zlib_alloc;
-    stream.zfree  = zlib_free;
-    stream.opaque = (voidpf) Z_NULL;
-
-    stream.next_in = (Bytef *) buffer;
-    stream.avail_in = length;
-	stream.avail_out = stream.avail_in + (stream.avail_in / ZLIB_MODIFIER) + 15 + 1; /* room for \0 */
-
-    s2 = (char *) emalloc(stream.avail_out);
-    if (!s2) {
-		return 0;
-    }
-	stream.next_out = s2;
-
-    /* init with -MAX_WBITS disables the zlib internal headers */
-    status = deflateInit2(&stream, level, Z_DEFLATED, -MAX_WBITS, MAX_MEM_LEVEL, 0);
-    if (status == Z_OK) {
-        status = deflate(&stream, Z_FINISH);
-        if (status != Z_STREAM_END) {
-            deflateEnd(&stream);
-            if (status == Z_OK) {
-                status = Z_BUF_ERROR;
-            }
-        } else {
-            status = deflateEnd(&stream);
-        }
-    }
-
-    if (status == Z_OK) {
-        s2 = erealloc(s2,stream.total_out + 1); /* resize to buffer to the "right" size */
-        s2[ stream.total_out ] = '\0';
-    } else {
-        efree(s2);
-		return 0;
-    }
-
-	return s2;
-}
