@@ -23,6 +23,10 @@
 ####workercommand="cronolog_svr"
 ####exceptext=""
 ####timeout=1000
+####usegzip=1
+####debug=1
+####debugfile=/var/log/cronolog_gearman.log
+
 
 ##APACHE CONFIG
 ###CustomLog "|cronolog --period=1minute /home/httpd/logs/access_log" combined env=!do_not_log
