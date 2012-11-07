@@ -1,7 +1,7 @@
 <?
 $count = 0;
 # create the gearman client
-$worker = new GearmanWorker('10.128.5.11');
+$worker = new GearmanWorker('127.0.0.1');
 $worker->addServer();
 
 
@@ -11,7 +11,8 @@ while ($worker->work());
 function servicegroup($job)  {
     global $count;
 
-    $workload = trim($job->workload());
+    //$workload = trim($job->workload());
+	$workload = trim(gzinflate($job->workload()));
     $lstemp  = explode("\n", $workload);
 
     foreach ( $lstemp as $val ) {
