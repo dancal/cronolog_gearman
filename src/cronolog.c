@@ -89,16 +89,37 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
+#include <zlib.h>
 #include <libgearman/gearman.h>
 
 #include "iniparser.h"
 
 /* Forward function declaration */
+void DEBUGLOG( const char *buf, ... );
+int	new_log_file(const char *, const char *, mode_t, const char *, PERIODICITY, int, int, char *, size_t, time_t, time_t *);
+char *gzcompress( char *buffer, int length );
 
-int	new_log_file(const char *, const char *, mode_t, const char *,
-		     PERIODICITY, int, int, char *, size_t, time_t, time_t *);
+gearman_client_st gclient;
+char *job_handle;
+char *target_worker;
+
+int DEBUG_MODE;
+int gearman_ok;
+char *debug_log_file;
 
 /* Definition of version and usage messages */
+
+#define emalloc(size)       	malloc(size)
+#define efree(ptr)          	free(ptr)
+#define erealloc(ptr, size)		__realloc(ptr,size)
+#define ecalloc(nmemb, size)                       calloc((nmemb), (size))
+#define safe_emalloc(nmemb, size, offset)          malloc((nmemb) * (size) + (offset))
+
+#define ZLIB_MODIFIER 			1000
+#define OS_CODE                 0x03 /* FIXME */
+#define GZIP_HEADER_LENGTH      10
+#define GZIP_FOOTER_LENGTH      8
 
 #ifndef _WIN32
 #define VERSION_MSG   	PACKAGE " version " VERSION "\n"
@@ -125,7 +146,6 @@ int	new_log_file(const char *, const char *, mode_t, const char *,
 			"   -z TZ, --time-zone=TZ      use TZ for timezone\n" \
 			"   -V,      --version         print version number, then exit\n"
 
-
 /* Definition of the short and long program options */
 
 char          *short_options = "ad:eop:s:z:H:P:S:l:hVx:";
@@ -149,23 +169,70 @@ struct option long_options[] =
 };
 #endif
 
+inline static void * __realloc(void *p, size_t len) {
+  p = realloc(p, len);
+  if (p) {
+    return p;
+  }
+  fprintf(stderr, "Out of memory\n");
+  exit(1);
+}
+
+static voidpf zlib_alloc(voidpf opaque, uInt items, uInt size) {
+    return (voidpf)safe_emalloc(items, size, 0);
+}
+
+static void zlib_free(voidpf opaque, voidpf address) {
+    efree((void*)address);
+}
+
 /*
-static void *_client_malloc(size_t size, void *arg) {
-    uint8_t *ret;
-    ret= emalloc(size+1);
-    ret[size]= 0;
-    return ret;
-}
-void _client_free(void *ptr, void *arg) {
-    free(ptr);
-}
+	gearman collector
 */
+int createGearmanClient() {
+
+    char *servers;
+    int gearman_opt_timeout;
+    int usegzip;
+    int randnumber;
+	gearman_return_t ret;
+
+    srand(time(NULL));
+
+    dictionary *ini     = iniparser_load("/etc/cronolog_gm.ini");
+    servers             = iniparser_getstring(ini, "gearman:servers", NULL);
+    target_worker       = iniparser_getstring(ini, "gearman:workercommand", NULL);
+	debug_log_file		= iniparser_getstring(ini, "gearman:debugfile", NULL);
+
+    gearman_opt_timeout = iniparser_getint(ini, "gearman:timeout", 3000);
+    usegzip             = iniparser_getint(ini, "gearman:usegzip", 0);
+	DEBUG_MODE			= iniparser_getint(ini, "gearman:debug", 1);
+    randnumber          = rand() % 100;
+
+    if (gearman_client_create(&gclient) == NULL) {
+        DEBUGLOG(("gearman_client_create 1"));
+		return false;
+    } else {
+
+    	char * server  = strdup( servers );
+	    char * host    = str_token( &server, ':' );
+    	in_port_t port = ( in_port_t ) atoi( str_token( &server, 0 ) );
+
+	    gearman_client_set_timeout( &gclient, gearman_opt_timeout );
+	    ret = gearman_client_add_server(&gclient, host, port);
+    	if (ret != GEARMAN_SUCCESS) {
+        	DEBUGLOG(("gearman_client_add_server 2"));
+			return false;
+    	}
+
+	}
+
+	return true;
+}
 
 /* Main function.
  */
-int
-main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     PERIODICITY	periodicity = UNKNOWN;
     PERIODICITY	period_delay_units = UNKNOWN;
     int		period_multiple = 1;
@@ -185,6 +252,13 @@ main(int argc, char **argv)
     time_t	time_offset = 0;
     time_t	next_period = 0;
     int 	log_fd = -1;
+
+    char 	*gzip_buf;
+	int 	gzip_buf_len;
+    char 	*sendbuf;
+	int 	sendbuf_len;
+
+    gearman_return_t gearman_ret;
 
 #ifndef _WIN32
     while ((ch = getopt_long(argc, argv, short_options, long_options, NULL)) != EOF)
@@ -278,24 +352,20 @@ main(int argc, char **argv)
 	}
     }
 
-    if ((argc - optind) != 1)
-    {
-	fprintf(stderr, USAGE_MSG, argv[0]);
-	exit(1);
+    if ((argc - optind) != 1) {
+		fprintf(stderr, USAGE_MSG, argv[0]);
+		exit(1);
     }
+    DEBUGLOG(VERSION_MSG);
 
-    DEBUG((VERSION_MSG "\n"));
-
-    if (start_time)
-    {
-	time_now = parse_time(start_time, use_american_date_formats);
-	if (time_now == -1)
-	{
-	    fprintf(stderr, "%s: invalid start time (%s)\n", argv[0], start_time);
-	    exit(1);
-	}
-	time_offset = time_now - time(NULL);
-	DEBUG(("Using offset of %d seconds from real time\n", time_offset));
+    if (start_time) {
+		time_now = parse_time(start_time, use_american_date_formats);
+		if (time_now == -1) {
+		    fprintf(stderr, "%s: invalid start time (%s)\n", argv[0], start_time);
+		    exit(1);
+		}
+		time_offset = time_now - time(NULL);
+		DEBUGLOG("Using offset of %d seconds from real time", time_offset);
     }
 
     /* The template should be the only argument.
@@ -303,131 +373,92 @@ main(int argc, char **argv)
      */
     
     template = argv[optind];
-    if (periodicity == UNKNOWN)
-    {
-	periodicity = determine_periodicity(template);
+    if (periodicity == UNKNOWN) {
+		periodicity = determine_periodicity(template);
     }
 
-
-    DEBUG(("periodicity = %d %s\n", period_multiple, periods[periodicity]));
+    DEBUGLOG(("periodicity = %d %s", period_multiple, periods[periodicity]));
 
     if (period_delay) {
-	if (   (period_delay_units > periodicity)
-	    || (   period_delay_units == periodicity
-		&& abs(period_delay)  >= period_multiple)) {
-	    fprintf(stderr, "%s: period delay cannot be larger than the rollover period\n", argv[0], start_time);
-	    exit(1);
-	}		
-	period_delay *= period_seconds[period_delay_units];
+		if ( (period_delay_units > periodicity) || (   period_delay_units == periodicity && abs(period_delay)  >= period_multiple)) {
+		    fprintf(stderr, "%s: period delay cannot be larger than the rollover period\n", argv[0], start_time);
+	    	exit(1);
+		}		
+		period_delay *= period_seconds[period_delay_units];
     }
+    DEBUGLOG(("Rotation period is per %d %s", period_multiple, periods[periodicity]));
 
-    DEBUG(("Rotation period is per %d %s\n", period_multiple, periods[periodicity]));
-
-
-	/*
-	  gearman collector
-	*/
-	char *servers;
-	char *target_worker;
-	char unique[128];
-	int gearman_opt_timeout;
-	char buffer[65536];
-
-	gearman_return_t ret;
-	gearman_task_st *task = NULL;
-	gearman_task_st *task2 = NULL;
-	gearman_client_st gclient;
-
-	dictionary *ini = iniparser_load("/etc/cronolog_gm.ini");
-	servers			= iniparser_getstring(ini, "gearman:servers", NULL);
-	target_worker	= iniparser_getstring(ini, "gearman:workercommand", NULL);
-	gearman_opt_timeout = iniparser_getint(ini, "gearman:timeout", 3000);
-
-    if (gearman_client_create(&gclient) == NULL) {
-		DEBUG(("gearman_client_error"));
-	    exit(6);
-    }
-
-	gearman_client_set_timeout( &gclient, gearman_opt_timeout );
-
-	char * server  = strdup( servers );
-	char * host    = str_token( &server, ':' );
-	in_port_t port = ( in_port_t ) atoi( str_token( &server, 0 ) );
-
-  	ret = gearman_client_add_server(&gclient, host, port);
-  	if (ret != GEARMAN_SUCCESS ) {
-		DEBUG(("gearman_client_error"));
-	    exit(7);
-  	}
+	//gearman client create
+	gearman_ok = createGearmanClient();
+	if ( !gearman_ok ) {
+    	DEBUGLOG(("createGearmanClient Error"));
+	}
 
     /* Loop, waiting for data on standard input */
-    for (;;)
-    {
-	/* Read a buffer's worth of log file data, exiting on errors
-	 * or end of file.
-	 */
-	n_bytes_read = read(0, read_buf, sizeof read_buf);
-	if (n_bytes_read == 0)
-	{
-	    exit(3);
-	}
-	if (errno == EINTR)
-	{
-	    continue;
-	}
-	else if (n_bytes_read < 0)
-	{
-	    exit(4);
-	}
+    for (;;) {
 
-	time_now = time(NULL) + time_offset;
+		/* Read a buffer's worth of log file data, exiting on errors
+		 * or end of file.
+		 */
+		n_bytes_read = read(0, read_buf, sizeof read_buf);
+		if (n_bytes_read == 0) {
+	    	exit(3);
+		}
+		if (errno == EINTR) {
+	    	continue;
+		} else if (n_bytes_read < 0) {
+	    	exit(4);
+		}
+
+		time_now = time(NULL) + time_offset;
 	
-	/* If the current period has finished and there is a log file
-	 * open, close the log file
-	 */
-	if ((time_now >= next_period) && (log_fd >= 0))
-	{
-	    close(log_fd);
-	    log_fd = -1;
-	}
+		/* If the current period has finished and there is a log file
+		 * open, close the log file
+		 */
+		if ((time_now >= next_period) && (log_fd >= 0)) {
+		    close(log_fd);
+		    log_fd = -1;
+		}
 	
-	/* If there is no log file open then open a new one.
-	 */
-	if (log_fd < 0)
-	{
-	    log_fd = new_log_file(template, linkname, linktype, prevlinkname,
-				  periodicity, period_multiple, period_delay,
-				  filename, sizeof (filename), time_now, &next_period);
-	}
+		/* If there is no log file open then open a new one.
+		 */
+		if (log_fd < 0) {
+		    log_fd = new_log_file(template, linkname, linktype, prevlinkname, periodicity, period_multiple, period_delay, filename, sizeof (filename), time_now, &next_period);
+		}
 
-	DEBUG(("%s (%d): wrote message; next period starts at %s (%d) in %d secs\n",
-	       timestamp(time_now), time_now, 
-	       timestamp(next_period), next_period,
-	       next_period - time_now));
+		//DEBUGLOG("%s (%d): wrote message; next period starts at %s (%d) in %d secs\n", timestamp(time_now), time_now,  timestamp(next_period), next_period, next_period - time_now);
+		/* Write out the log data to the current log file.
+		 */
+		if (write(log_fd, read_buf, n_bytes_read) != n_bytes_read) {
+		    perror(filename);
+		    exit(5);
+		}
 
-	/* Write out the log data to the current log file.
-	 */
-	if (write(log_fd, read_buf, n_bytes_read) != n_bytes_read)
-	{
-	    perror(filename);
-	    exit(5);
-	}
+		if ( gearman_ok ) {
 
-	if ( n_bytes_read > 10 ) {
+			//send gearman-server
+			sendbuf			= replaceAll( read_buf, "\n", " " );
+			job_handle		= emalloc(GEARMAN_JOB_HANDLE_SIZE);
+			gzip_buf		= gzcompress( sendbuf, strlen(sendbuf) ); 
+			gzip_buf_len	= strlen(sendbuf);
 
-	    //add the task
-    	task2 = gearman_client_add_task(&gclient, task, NULL, target_worker, NULL, ( void * )read_buf, n_bytes_read, &ret );
-		gearman_client_run_tasks( &gclient );
-	 	if(gearman_client_error(&gclient) != NULL && strcmp(gearman_client_error(&gclient), "") != 0) { // errno is somehow empty, use error instead
-			DEBUG(("gearman_client_error"));
-	    	exit(8);
-	    }
+	    	//add the task
+	    	gearman_ret = gearman_client_do_background(&gclient, target_worker, NULL, ( void * )gzip_buf, gzip_buf_len, job_handle );
+			gearman_client_run_tasks( &gclient );
 
-		//int ret3 = gearman_client_wait(&(gclient));
-	}
-	//gearman client end
+			if(gearman_client_error(&gclient) != NULL && strcmp(gearman_client_error(&gclient), "") != 0) { // errno is somehow empty, use error instead
+				DEBUGLOG("gearman_client_run_tasks 3");
+				gearman_client_free(&gclient);
+		    	gearman_ok = createGearmanClient();
+		    }
 
+			efree(job_handle);
+			efree(sendbuf);
+			efree(gzip_buf);
 
+		}
+
+		//gearman client end
 
     }
 
@@ -445,8 +476,7 @@ main(int argc, char **argv)
  * name of the file and the start time of the next period via pointers
  * supplied.
  */
-int
-new_log_file(const char *template, const char *linkname, mode_t linktype, const char *prevlinkname,
+int new_log_file(const char *template, const char *linkname, mode_t linktype, const char *prevlinkname,
 	     PERIODICITY periodicity, int period_multiple, int period_delay,
 	     char *pfilename, size_t pfilename_len,
 	     time_t time_now, time_t *pnext_period)
@@ -460,11 +490,8 @@ new_log_file(const char *template, const char *linkname, mode_t linktype, const 
     strftime(pfilename, BUFSIZE, template, tm);
     *pnext_period = start_of_next_period(start_of_period, periodicity, period_multiple) + period_delay;
     
-    DEBUG(("%s (%d): using log file \"%s\" from %s (%d) until %s (%d) (for %d secs)\n",
-	   timestamp(time_now), time_now, pfilename, 
-           timestamp(start_of_period), start_of_period,
-	   timestamp(*pnext_period), *pnext_period,
-	   *pnext_period - time_now));
+    DEBUGLOG("%s (%d): using log file \"%s\" from %s (%d) until %s (%d) (for %d secs)",
+	   timestamp(time_now), time_now, pfilename, timestamp(start_of_period), start_of_period, timestamp(*pnext_period), *pnext_period, *pnext_period - time_now);
     
     log_fd = open(pfilename, O_WRONLY|O_CREAT|O_APPEND, FILE_MODE);
     
@@ -487,4 +514,77 @@ new_log_file(const char *template, const char *linkname, mode_t linktype, const 
 	create_link(pfilename, linkname, linktype, prevlinkname);
     }
     return log_fd;
+}
+
+void error_handling(char* message) {
+	fputs(message, stdout);
+	fputc('\n', stdout);
+	exit(1);
+}
+
+void DEBUGLOG( const char *buf, ... ) {
+
+	if ( debug_log_file == NULL ) { return; }
+
+	if ( DEBUG_MODE ) {
+
+		char buffer[8192];
+
+	 	va_list ap;
+    	va_start( ap, buf );
+	    vsnprintf( buffer + strlen( buffer ), sizeof( buffer ) - strlen( buffer ), buf, ap );
+    	va_end( ap );
+
+		FILE *fildes = fopen( debug_log_file, "a");
+		fprintf(fildes, "[gearman_client_error] %s\n", buffer);
+		fclose(fildes);
+	}
+
+}
+
+char *gzcompress( char *buffer, int length ) {
+
+	int status;
+	long level = Z_DEFAULT_COMPRESSION;
+	z_stream stream;
+    char *zipdata, *s2;
+
+    stream.data_type = Z_ASCII;
+    stream.zalloc = zlib_alloc;
+    stream.zfree  = zlib_free;
+    stream.opaque = (voidpf) Z_NULL;
+
+    stream.next_in = (Bytef *) buffer;
+    stream.avail_in = length;
+	stream.avail_out = stream.avail_in + (stream.avail_in / ZLIB_MODIFIER) + 15 + 1; /* room for \0 */
+
+    s2 = (char *) emalloc(stream.avail_out);
+    if (!s2) {
+		return 0;
+    }
+	stream.next_out = s2;
+
+    /* init with -MAX_WBITS disables the zlib internal headers */
+    status = deflateInit2(&stream, level, Z_DEFLATED, -MAX_WBITS, MAX_MEM_LEVEL, 0);
+    if (status == Z_OK) {
+        status = deflate(&stream, Z_FINISH);
+        if (status != Z_STREAM_END) {
+            deflateEnd(&stream);
+            if (status == Z_OK) {
+                status = Z_BUF_ERROR;
+            }
+        } else {
+            status = deflateEnd(&stream);
+        }
+    }
+
+    if (status == Z_OK) {
+        s2 = erealloc(s2,stream.total_out + 1); /* resize to buffer to the "right" size */
+        s2[ stream.total_out ] = '\0';
+    } else {
+        efree(s2);
+		return 0;
+    }
+
+	return s2;
 }

@@ -173,6 +173,7 @@ void		print_debug_msg(char *msg, ...);
 time_t		parse_time(char *time_str, int);
 char 		*timestamp(time_t thetime);
 char 		*str_token( char **c, char delim );
+char 		*replaceAll(char *s, const char *olds, const char *news);
 
 /* Global variables */
 

@@ -10,9 +10,9 @@ configure:760: checking for working automake
 configure:773: checking for working autoheader
 configure:786: checking for working makeinfo
 configure:823: checking for gcc
-configure:936: checking whether the C compiler (gcc -I/usr/include/boost141 -I../iniparser/src -lgearman -L../iniparser -liniparser) works
-configure:952: gcc -o conftest -I/usr/include/boost141 -I../iniparser/src  -lgearman -L../iniparser -liniparser conftest.c  1>&5
-configure:978: checking whether the C compiler (gcc -I/usr/include/boost141 -I../iniparser/src -lgearman -L../iniparser -liniparser) is a cross-compiler
+configure:936: checking whether the C compiler (gcc -I/usr/include/boost141 -I../iniparser/src -lgearman -L../iniparser -liniparser -lz) works
+configure:952: gcc -o conftest -I/usr/include/boost141 -I../iniparser/src  -lgearman -L../iniparser -liniparser -lz conftest.c  1>&5
+configure:978: checking whether the C compiler (gcc -I/usr/include/boost141 -I../iniparser/src -lgearman -L../iniparser -liniparser -lz) is a cross-compiler
 configure:983: checking whether we are using GNU C
 configure:1011: checking whether gcc accepts -g
 configure:1054: checking for a BSD compatible install

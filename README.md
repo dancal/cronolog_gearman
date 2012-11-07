@@ -3,13 +3,13 @@
 ##need iniparser (included) 
 ** http://ndevilla.free.fr/iniparser/
 ##need libgearman-devel
-##nead boost144-devel
+##need boost144-devel
 
 #ApacheLog send to Gearman Server
 
 #INSTALL
 ###export CFLAGS="-I/usr/include/boost141 -I../iniparser/src"
-###export LDFLAGS="-lgearman -L../iniparser -liniparser"
+###export LDFLAGS="-lgearman -L../iniparser -liniparser -lz"
 
 ###./configure
 ###make

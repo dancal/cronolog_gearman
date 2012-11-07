@@ -79,7 +79,7 @@ LIBRARIES =  $(noinst_LIBRARIES)
 
 DEFS =  -DPACKAGE=\"cronolog\" -DVERSION=\"1.6.2\" -DSTDC_HEADERS=1 -DTIME_WITH_SYS_TIME=1 -DHAVE_TM_ZONE=1 -DHAVE_FCNTL_H=1 -DHAVE_LIMITS_H=1 -DHAVE_UNISTD_H=1 -DHAVE_STRFTIME=1 -DHAVE_VPRINTF=1 -DHAVE_MKDIR=1 -DHAVE_MKTIME=1 -DHAVE_PUTENV=1 -DHAVE_STRPTIME=1 -DHAVE_LOCALTIME_R=1  -I. -I$(srcdir) 
 CPPFLAGS = 
-LDFLAGS = -lgearman -L../iniparser -liniparser
+LDFLAGS = -lgearman -L../iniparser -liniparser -lz
 LIBS = 
 libutil_a_DEPENDENCIES =  
 libutil_a_OBJECTS =  getopt.o getopt1.o
