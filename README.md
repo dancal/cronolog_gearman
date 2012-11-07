@@ -1,6 +1,6 @@
 #base on cronolog-1.6.2    
 ** http://cronolog.org/
-##need iniparser (included) 
+##need iniparser 
 ** http://ndevilla.free.fr/iniparser/
 ##need libgearman-devel
 ##need boost144-devel
