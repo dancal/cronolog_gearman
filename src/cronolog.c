@@ -100,9 +100,11 @@ void DEBUGLOG( const char *buf, ... );
 char *gzcompress( char *buffer, int length );
 int	new_log_file(const char *, const char *, mode_t, const char *, PERIODICITY, int, int, char *, size_t, time_t, time_t *);
 
+//global var
 gearman_client_st gclient;
 char *job_handle;
 char *target_worker;
+int usegzip;
 
 int DEBUG_MODE;
 int gearman_ok;
@@ -259,7 +261,6 @@ int createGearmanClient() {
 
     char *servers;
     int gearman_opt_timeout;
-    int usegzip;
     int randnumber;
 	gearman_return_t ret;
 
@@ -502,12 +503,16 @@ int main(int argc, char **argv) {
 
 			//send gearman-server
 			sendbuf			= replaceAll( read_buf, "\n", " " );
-			job_handle		= emalloc(GEARMAN_JOB_HANDLE_SIZE);
-			gzip_buf		= gzcompress( sendbuf, strlen(sendbuf) ); 
-			gzip_buf_len	= strlen(sendbuf);
+			sendbuf_len		= strlen(sendbuf);		
 
-	    	//add the task
-	    	gearman_ret = gearman_client_do_background(&gclient, target_worker, NULL, ( void * )gzip_buf, gzip_buf_len, job_handle );
+			job_handle		= emalloc(GEARMAN_JOB_HANDLE_SIZE);
+			if ( usegzip ) {
+				gzip_buf		= gzcompress( sendbuf, sendbuf_len ); 
+				gzip_buf_len	= strlen(sendbuf);
+	    		gearman_ret = gearman_client_do_background(&gclient, target_worker, NULL, ( void * )gzip_buf, gzip_buf_len, job_handle );
+			} else {
+	    		gearman_ret = gearman_client_do_background(&gclient, target_worker, NULL, ( void * )sendbuf, sendbuf_len, job_handle );
+			}
 			gearman_client_run_tasks( &gclient );
 
 			if(gearman_client_error(&gclient) != NULL && strcmp(gearman_client_error(&gclient), "") != 0) { // errno is somehow empty, use error instead

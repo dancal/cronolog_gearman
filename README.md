@@ -21,7 +21,6 @@
 ####[gearman]
 ####servers="127.0.0.1:4730"
 ####workercommand="cronolog_svr"
-####exceptext=""
 ####timeout=1000
 ####usegzip=1
 ####debug=1
