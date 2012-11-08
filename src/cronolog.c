@@ -96,7 +96,7 @@
 #include "iniparser.h"
 
 /* Forward function declaration */
-void DEBUGLOG( const char *buf, ... );
+void DEBUGLOG( int lv, const char *buf, ... );
 char *gzcompress( char *buffer, int length );
 int	new_log_file(const char *, const char *, mode_t, const char *, PERIODICITY, int, int, char *, size_t, time_t, time_t *);
 
@@ -108,6 +108,7 @@ int usegzip;
 
 int DEBUG_MODE;
 int gearman_ok;
+int gearman_enable;
 char *debug_log_file;
 
 /* Definition of version and usage messages */
@@ -190,7 +191,7 @@ void error_handling(char* message) {
 	exit(1);
 }
 
-void DEBUGLOG( const char *buf, ... ) {
+void DEBUGLOG( int lv, const char *buf, ... ) {
 
 	if ( debug_log_file == NULL ) { return; }
 
@@ -204,7 +205,11 @@ void DEBUGLOG( const char *buf, ... ) {
     	va_end( ap );
 
 		FILE *fildes = fopen( debug_log_file, "a");
-		fprintf(fildes, "[gearman_client_error] %s\n", buffer);
+		if ( lv == 0 ) {
+			fprintf(fildes, "[cronolog] %s\n\n", buffer);
+		} else {
+			fprintf(fildes, "[gearman_client_error] %s\n", buffer);
+		}
 		fclose(fildes);
 	}
 
@@ -271,13 +276,13 @@ int createGearmanClient() {
     target_worker       = iniparser_getstring(ini, "gearman:workercommand", NULL);
 	debug_log_file		= iniparser_getstring(ini, "gearman:debugfile", NULL);
 
+    gearman_enable		= iniparser_getint(ini, "gearman:enable", 0);
     gearman_opt_timeout = iniparser_getint(ini, "gearman:timeout", 3000);
     usegzip             = iniparser_getint(ini, "gearman:usegzip", 0);
 	DEBUG_MODE			= iniparser_getint(ini, "gearman:debug", 1);
-    randnumber          = rand() % 100;
 
     if (gearman_client_create(&gclient) == NULL) {
-        DEBUGLOG("gearman_client_create 1");
+        DEBUGLOG(1, "gearman_client_create 1");
 		return false;
     } else {
 
@@ -288,7 +293,7 @@ int createGearmanClient() {
 	    gearman_client_set_timeout( &gclient, gearman_opt_timeout );
 	    ret = gearman_client_add_server(&gclient, host, port);
     	if (ret != GEARMAN_SUCCESS) {
-        	DEBUGLOG("gearman_client_add_server 2");
+        	DEBUGLOG(1, "gearman_client_add_server 2");
 			return false;
     	}
 
@@ -431,7 +436,7 @@ int main(int argc, char **argv) {
 		    exit(1);
 		}
 		time_offset = time_now - time(NULL);
-		DEBUGLOG("Using offset of %d seconds from real time", time_offset);
+		DEBUGLOG(0, "Using offset of %d seconds from real time", time_offset);
     }
 
     /* The template should be the only argument.
@@ -442,7 +447,7 @@ int main(int argc, char **argv) {
     if (periodicity == UNKNOWN) {
 		periodicity = determine_periodicity(template);
     }
-    DEBUGLOG(("periodicity = %d %s", period_multiple, periods[periodicity]));
+    DEBUGLOG(0, "periodicity = %d %s", period_multiple, periods[periodicity]);
 
     if (period_delay) {
 		if ( (period_delay_units > periodicity) || (   period_delay_units == periodicity && abs(period_delay)  >= period_multiple)) {
@@ -451,12 +456,16 @@ int main(int argc, char **argv) {
 		}		
 		period_delay *= period_seconds[period_delay_units];
     }
-    DEBUGLOG(("Rotation period is per %d %s", period_multiple, periods[periodicity]));
+    DEBUGLOG(0, "Rotation period is per %d %s", period_multiple, periods[periodicity]);
 
 	//gearman client create
-	gearman_ok = createGearmanClient();
-	if ( !gearman_ok ) {
-    	DEBUGLOG(("createGearmanClient Error"));
+	if ( gearman_enable ) {
+
+		gearman_ok = createGearmanClient();
+		if ( !gearman_ok ) {
+    		DEBUGLOG(1, "createGearmanClient Error");
+		}
+
 	}
 
     /* Loop, waiting for data on standard input */
@@ -492,6 +501,7 @@ int main(int argc, char **argv) {
 		}
 
 		//DEBUGLOG("%s (%d): wrote message; next period starts at %s (%d) in %d secs\n", timestamp(time_now), time_now,  timestamp(next_period), next_period, next_period - time_now);
+
 		/* Write out the log data to the current log file.
 		 */
 		if (write(log_fd, read_buf, n_bytes_read) != n_bytes_read) {
@@ -499,7 +509,7 @@ int main(int argc, char **argv) {
 		    exit(5);
 		}
 
-		if ( gearman_ok ) {
+		if ( gearman_enable && gearman_ok ) {
 
 			//send gearman-server
 			sendbuf			= replaceAll( read_buf, "\n", " " );
@@ -516,7 +526,7 @@ int main(int argc, char **argv) {
 			gearman_client_run_tasks( &gclient );
 
 			if(gearman_client_error(&gclient) != NULL && strcmp(gearman_client_error(&gclient), "") != 0) { // errno is somehow empty, use error instead
-				DEBUGLOG("gearman_client_run_tasks 3");
+				DEBUGLOG(1, "gearman_client_run_tasks 3");
 				gearman_client_free(&gclient);
 		    	gearman_ok = createGearmanClient();
 		    }
@@ -531,7 +541,9 @@ int main(int argc, char **argv) {
 
     }
 
-    gearman_client_free(&gclient);
+	if ( gearman_enable ) {
+	    gearman_client_free(&gclient);
+	}
 
     /* NOTREACHED */
     return 1;
@@ -559,7 +571,7 @@ int new_log_file(const char *template, const char *linkname, mode_t linktype, co
     strftime(pfilename, BUFSIZE, template, tm);
     *pnext_period = start_of_next_period(start_of_period, periodicity, period_multiple) + period_delay;
     
-    DEBUGLOG("%s (%d): using log file \"%s\" from %s (%d) until %s (%d) (for %d secs)",
+    DEBUGLOG(0, "%s (%d): using log file \"%s\" from %s (%d) until %s (%d) (for %d secs)",
 	   timestamp(time_now), time_now, pfilename, timestamp(start_of_period), start_of_period, timestamp(*pnext_period), *pnext_period, *pnext_period - time_now);
     
     log_fd = open(pfilename, O_WRONLY|O_CREAT|O_APPEND, FILE_MODE);
