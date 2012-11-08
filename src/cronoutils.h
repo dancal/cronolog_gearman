@@ -172,9 +172,7 @@ time_t		start_of_this_period(time_t, PERIODICITY, int);
 void		print_debug_msg(char *msg, ...);
 time_t		parse_time(char *time_str, int);
 char 		*timestamp(time_t thetime);
-char 		*str_token( char **c, char delim );
-char 		*replaceAll(char *s, const char *olds, const char *news);
-int 		explode(char ***arr_ptr, char *str, char delimiter);
+
 
 /* Global variables */
 

@@ -10,8 +10,8 @@
 #ApacheLog send to Gearman Server
 
 #INSTALL
-###export CFLAGS="-I/usr/include/boost141 -I../iniparser/src"
-###export LDFLAGS="-lgearman -L../iniparser -liniparser -lz"
+###export CFLAGS="-I../iniparser/src ../iniparser/libiniparser.a"
+###export LDFLAGS="-lgearman -lz"
 
 ###./configure
 ###make
