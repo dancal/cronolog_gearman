@@ -2,6 +2,8 @@
 ** http://cronolog.org/
 ##need iniparser 
 ** http://ndevilla.free.fr/iniparser/
+** http://ndevilla.free.fr/iniparser/iniparser-3.1.tar.gz
+** git clone http://github.com/ndevilla/iniparser.git
 ##need libgearman-devel
 ##need boost144-devel
 
