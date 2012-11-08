@@ -10,8 +10,6 @@
 #ApacheLog send to Gearman Server
 
 #INSTALL
-###export CFLAGS="-I../iniparser/src ../iniparser/libiniparser.a"
-###export LDFLAGS="-lgearman -lz"
 
 ###./configure
 ###make

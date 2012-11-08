@@ -710,4 +710,81 @@ timestamp(time_t thetime)
     return retval;
 }
 
-    
+char *str_token( char **c, char delim ) {
+    char *begin = *c;
+    if ( !*begin ) {
+        *c = begin;
+        return 0;
+    }
+    char *end = begin;
+    while ( *end && *end != delim ) end++;
+    if ( *end ) {
+        *end = 0;
+        *c = end + 1;
+    } else
+        *c = end;
+    return begin;
+} 
+
+char *replaceAll(char *s, const char *olds, const char *news) {
+  char *result, *sr;
+  size_t i, count = 0;
+  size_t oldlen = strlen(olds); if (oldlen < 1) return s;
+  size_t newlen = strlen(news);
+
+
+  if (newlen != oldlen) {
+    for (i = 0; s[i] != '\0';) {
+      if (memcmp(&s[i], olds, oldlen) == 0) count++, i += oldlen;
+      else i++;
+    }
+  } else i = strlen(s);
+
+
+  result = (char *) malloc(i + 1 + count * (newlen - oldlen));
+  if (result == NULL) return NULL;
+
+
+  sr = result;
+  while (*s) {
+    if (memcmp(s, olds, oldlen) == 0) {
+      memcpy(sr, news, newlen);
+      sr += newlen;
+      s  += oldlen;
+    } else *sr++ = *s++;
+  }
+  *sr = '\0';
+
+  return result;
+}
+
+int explode(char ***arr_ptr, char *str, char delimiter) {
+  char *src = str, *end, *dst;
+  char **arr;
+  int size = 1, i;
+
+  // Find number of strings
+  while ((end = strchr(src, delimiter)) != NULL)
+    {
+      ++size;
+      src = end + 1;
+    }
+
+  arr = malloc(size * sizeof(char *) + (strlen(str) + 1) * sizeof(char));
+
+  src = str;
+  dst = (char *) arr + size * sizeof(char *);
+  for (i = 0; i < size; ++i)
+    {
+      if ((end = strchr(src, delimiter)) == NULL)
+        end = src + strlen(src);
+      arr[i] = dst;
+      strncpy(dst, src, end - src);
+      dst[end - src] = '\0';
+      dst += end - src + 1;
+      src = end + 1;
+    }
+  *arr_ptr = arr;
+
+  return size;
+}

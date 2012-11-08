@@ -52,11 +52,11 @@ PROGRAMS = $(noinst_PROGRAMS) $(sbin_PROGRAMS)
 am_cronolog_OBJECTS = cronolog.$(OBJEXT) cronoutils.$(OBJEXT)
 cronolog_OBJECTS = $(am_cronolog_OBJECTS)
 cronolog_LDADD = $(LDADD)
-cronolog_DEPENDENCIES = ../lib/libutil.a
+cronolog_DEPENDENCIES = ../lib/libutil.a ../iniparser/libiniparser.a
 am_cronotest_OBJECTS = cronotest.$(OBJEXT) cronoutils.$(OBJEXT)
 cronotest_OBJECTS = $(am_cronotest_OBJECTS)
 cronotest_LDADD = $(LDADD)
-cronotest_DEPENDENCIES = ../lib/libutil.a
+cronotest_DEPENDENCIES = ../lib/libutil.a ../iniparser/libiniparser.a
 sbinSCRIPT_INSTALL = $(INSTALL_SCRIPT)
 SCRIPTS = $(sbin_SCRIPTS)
 DEFAULT_INCLUDES = -I. -I$(srcdir)
@@ -149,8 +149,8 @@ target_alias = @target_alias@
 sbin_SCRIPTS = cronosplit
 cronolog_SOURCES = cronolog.c  cronoutils.c cronoutils.h config.h
 cronotest_SOURCES = cronotest.c cronoutils.c cronoutils.h config.h
-INCLUDES = -I../lib
-LDADD = ../lib/libutil.a
+INCLUDES = -I../lib  -I../iniparser -I../iniparser/src
+LDADD = ../lib/libutil.a  ../iniparser/libiniparser.a -lgearman -lz
 EXTRA_DIST = $(sbin_SCRIPTS) 
 all: all-am
 
