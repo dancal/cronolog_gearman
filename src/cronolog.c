@@ -318,8 +318,6 @@ int main(int argc, char **argv) {
 
     char 	*gzip_buf;
 	int 	gzip_buf_len;
-    char 	sendbuf[BUFSIZE];
-	int 	sendbuf_len;
 
     gearman_return_t gearman_ret;
 
@@ -514,9 +512,6 @@ int main(int argc, char **argv) {
 		if ( __GEARMAN_ENABLE__ && __GEARMAN_STATUS__ && n_bytes_read > 10 ) {
 
 			//send gearman-server
-			//sendbuf			= replaceAll( read_buf, "\n", " " );
-			//sendbuf_len		= strlen(sendbuf);		
-
 			__JOB_HANDLE__		= emalloc(GEARMAN_JOB_HANDLE_SIZE);
 			if ( __USEGZIP__ ) {
 				gzip_buf		= gzcompress( read_buf, n_bytes_read, &gzip_buf_len ); 
@@ -525,15 +520,7 @@ int main(int argc, char **argv) {
 	    		gearman_ret = gearman_client_do_background(&__GCLIENT__, __GM_WORKER__, NULL, ( void * )read_buf, n_bytes_read, __JOB_HANDLE__ );
 			}
 			gearman_client_run_tasks( &__GCLIENT__ );
-
-			if(gearman_client_error(&__GCLIENT__) != NULL && strcmp(gearman_client_error(&__GCLIENT__), "") != 0) { // errno is somehow empty, use error instead
-				DEBUGLOG(1, "gearman_client_run_tasks 3");
-				gearman_client_free(&__GCLIENT__);
-		    	__GEARMAN_STATUS__ = createGearmanClient();
-		    }
-
 			efree(__JOB_HANDLE__);
-			efree(sendbuf);
 			efree(gzip_buf);
 
 		}
