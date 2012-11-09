@@ -97,7 +97,7 @@
 
 /* Forward function declaration */
 void DEBUGLOG( int lv, const char *buf, ... );
-char *gzcompress( char *buffer, int length );
+char *gzcompress( char *buffer, int length, int *comprLen );
 int	new_log_file(const char *, const char *, mode_t, const char *, PERIODICITY, int, int, char *, size_t, time_t, time_t *);
 
 //global var
@@ -219,7 +219,7 @@ void DEBUGLOG( int lv, const char *buf, ... ) {
 
 }
 
-char *gzcompress( char *buffer, int length ) {
+char *gzcompress( char *buffer, int length, int *comprLen ) {
 
 	int status;
 	long level = Z_DEFAULT_COMPRESSION;
@@ -254,6 +254,8 @@ char *gzcompress( char *buffer, int length ) {
             status = deflateEnd(&stream);
         }
     }
+
+	*comprLen = stream.total_out;
 
     if (status == Z_OK) {
         zipdata = erealloc(zipdata,stream.total_out + 1); /* resize to buffer to the "right" size */
@@ -316,7 +318,7 @@ int main(int argc, char **argv) {
 
     char 	*gzip_buf;
 	int 	gzip_buf_len;
-    char 	*sendbuf;
+    char 	sendbuf[BUFSIZE];
 	int 	sendbuf_len;
 
     gearman_return_t gearman_ret;
@@ -509,19 +511,18 @@ int main(int argc, char **argv) {
 		    exit(5);
 		}
 
-		if ( __GEARMAN_ENABLE__ && __GEARMAN_STATUS__ ) {
+		if ( __GEARMAN_ENABLE__ && __GEARMAN_STATUS__ && n_bytes_read > 10 ) {
 
 			//send gearman-server
-			sendbuf			= replaceAll( read_buf, "\n", " " );
-			sendbuf_len		= strlen(sendbuf);		
+			//sendbuf			= replaceAll( read_buf, "\n", " " );
+			//sendbuf_len		= strlen(sendbuf);		
 
 			__JOB_HANDLE__		= emalloc(GEARMAN_JOB_HANDLE_SIZE);
 			if ( __USEGZIP__ ) {
-				gzip_buf		= gzcompress( sendbuf, sendbuf_len ); 
-				gzip_buf_len	= strlen(sendbuf);
+				gzip_buf		= gzcompress( read_buf, n_bytes_read, &gzip_buf_len ); 
 	    		gearman_ret = gearman_client_do_background(&__GCLIENT__, __GM_WORKER__, NULL, ( void * )gzip_buf, gzip_buf_len, __JOB_HANDLE__ );
 			} else {
-	    		gearman_ret = gearman_client_do_background(&__GCLIENT__, __GM_WORKER__, NULL, ( void * )sendbuf, sendbuf_len, __JOB_HANDLE__ );
+	    		gearman_ret = gearman_client_do_background(&__GCLIENT__, __GM_WORKER__, NULL, ( void * )read_buf, n_bytes_read, __JOB_HANDLE__ );
 			}
 			gearman_client_run_tasks( &__GCLIENT__ );
 
