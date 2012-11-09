@@ -529,9 +529,7 @@ int main(int argc, char **argv) {
 
     }
 
-	if ( __GEARMAN_ENABLE__ ) {
-	    gearman_client_free(&__GCLIENT__);
-	}
+	gearman_client_free(&__GCLIENT__);
 
 	iniparser_freedict(ini);
 
