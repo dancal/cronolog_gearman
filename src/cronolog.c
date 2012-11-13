@@ -95,10 +95,12 @@
 #include "../lib/getopt.h"
 #include "iniparser.h"
 
+bool __DEBUG__;
+
 /* Forward function declaration */
 char *gzcompress( char *buffer, int length, int *comprLen );
 int	new_log_file(const char *, const char *, mode_t, const char *, PERIODICITY, int, int, char *, size_t, time_t, time_t *);
-void ERROR_LOG( char *buf, ... );
+void DEBUG_LOG( char *buf, ... );
 
 /* Definition of version and usage messages */
 
@@ -138,23 +140,29 @@ void ERROR_LOG( char *buf, ... );
 
 char          *short_options = "ad:eop:s:z:H:P:S:l:hVx:";
 
-void ERROR_LOG( char *buf, ... ) {
+void DEBUG_LOG( char *buf, ... ) {
 
-	va_list argptr;
-	time_t mytime;
-    char buffer[1024];
+	if ( __DEBUG__ ) {
+		va_list argptr;
+		time_t mytime;
+	    char buffer[1024];
+		char *datetime;
 
-	mytime = time(NULL);
-	memset(buffer, 0, sizeof(buffer));
+		memset(buffer, 0, sizeof(buffer));
 
-    va_list ap;
-    va_start( ap, buf );
-    vsnprintf( buffer + strlen( buffer ), sizeof( buffer ) - strlen( buffer ), buf, ap );
-    va_end( ap );
+		mytime 		= time(NULL);
+		datetime	= ctime(&mytime);
+		datetime[strlen(datetime)-1]	= '\0';
 
-    FILE *fildes = fopen( "/var/log/cronolog_gm.log", "a");
-    fprintf(fildes, "[%s] %s\n", ctime(&mytime), buffer);
-    fclose(fildes);
+    	va_list ap;
+	    va_start( ap, buf );
+    	vsnprintf( buffer + strlen( buffer ), sizeof( buffer ) - strlen( buffer ), buf, ap );
+	    va_end( ap );
+
+    	FILE *fildes = fopen( "/var/log/cronolog_gm.log", "a");
+	    fprintf(fildes, "[%s] %s\n", datetime, buffer);
+    	fclose(fildes);
+	}
 
 }
 
@@ -276,7 +284,6 @@ int main(int argc, char **argv) {
 	int 	gzip_buf_len;
 	char    *s1, *s2;
 	bool 	__GEARMAN_ENABLE__;
-
 	bool 	__USEGZIP__;
 	int 	__GEARMAN_TIMEOUT__;
 
@@ -308,6 +315,7 @@ int main(int argc, char **argv) {
     __USEGZIP__         = iniparser_getboolean(ini, "gearman:usegzip", false);
     __GEARMAN_ENABLE__	= iniparser_getboolean(ini, "gearman:enable", true);
     __GEARMAN_TIMEOUT__ = iniparser_getint(ini, "gearman:timeout", 3000);
+    __DEBUG__			= iniparser_getint(ini, "gearman:debug", 0);
 
 	iniparser_freedict(ini);
 
@@ -415,7 +423,7 @@ int main(int argc, char **argv) {
 		    exit(1);
 		}
 		time_offset = time_now - time(NULL);
-		DEBUG(("Using offset of %d seconds from real time", time_offset));
+		DEBUG_LOG("Using offset of %d seconds from real time", time_offset);
     }
 
     /* The template should be the only argument.
@@ -426,7 +434,7 @@ int main(int argc, char **argv) {
     if (periodicity == UNKNOWN) {
 		periodicity = determine_periodicity(template);
     }
-    DEBUG(("periodicity = %d %s", period_multiple, periods[periodicity]));
+    DEBUG_LOG("periodicity = %d %s", period_multiple, periods[periodicity]);
 
     if (period_delay) {
 		if ( (period_delay_units > periodicity) || (   period_delay_units == periodicity && abs(period_delay)  >= period_multiple)) {
@@ -435,7 +443,7 @@ int main(int argc, char **argv) {
 		}		
 		period_delay *= period_seconds[period_delay_units];
     }
-    DEBUG(("Rotation period is per %d %s", period_multiple, periods[periodicity]));
+    DEBUG_LOG("Rotation period is per %d %s", period_multiple, periods[periodicity]);
 
     /* Loop, waiting for data on standard input */
     for (;;) {
@@ -445,11 +453,13 @@ int main(int argc, char **argv) {
 		 */
 		n_bytes_read = read(0, read_buf, sizeof read_buf);
 		if (n_bytes_read == 0) {
+			DEBUG_LOG("n_bytes_read == 0 exit(3)");
 	    	exit(3);
 		}
 		if (errno == EINTR) {
 	    	continue;
 		} else if (n_bytes_read < 0) {
+			DEBUG_LOG("n_bytes_read < 0 exit(4)");
 	    	exit(4);
 		}
 
@@ -470,8 +480,7 @@ int main(int argc, char **argv) {
 		    log_fd = new_log_file(template, linkname, linktype, prevlinkname, periodicity, period_multiple, period_delay, filename, sizeof (filename), time_now, &next_period);
 		}
 
-		DEBUG(("%s (%d): wrote message; next period starts at %s (%d) in %d secs\n", timestamp(time_now), time_now,  timestamp(next_period), next_period, next_period - time_now));
-
+		//DEBUG(("%s (%d): wrote message; next period starts at %s (%d) in %d secs\n", timestamp(time_now), time_now,  timestamp(next_period), next_period, next_period - time_now));
 		/* Write out the log data to the current log file.
 		 */
 		if (write(log_fd, read_buf, n_bytes_read) != n_bytes_read) {
@@ -500,11 +509,11 @@ int main(int argc, char **argv) {
 				if ( gearman_ret == GEARMAN_SUCCESS ) {
 					gearman_client_run_tasks( client );
 				} else {
-	        		//ERROR_LOG("gearman_client_add_server error %d", 1);
+	        		DEBUG_LOG("gearman_client_add_server error %d", 1);
 	  			}
 
 			} else {
-	        	//ERROR_LOG("gearman_client_create error %d", 2);
+	        	DEBUG_LOG("gearman_client_create error %d", 2);
 			}
 
 			gearman_client_free( client );
@@ -542,8 +551,9 @@ int new_log_file(const char *template, const char *linkname, mode_t linktype, co
     strftime(pfilename, BUFSIZE, template, tm);
     *pnext_period = start_of_next_period(start_of_period, periodicity, period_multiple) + period_delay;
     
-    DEBUG(("%s (%d): using log file \"%s\" from %s (%d) until %s (%d) (for %d secs)",
-	   timestamp(time_now), time_now, pfilename, timestamp(start_of_period), start_of_period, timestamp(*pnext_period), *pnext_period, *pnext_period - time_now));
+	DEBUG_LOG("using log file \"%s\" from %s (%d) until %s (%d) (for %d secs)", pfilename, timestamp(start_of_period), start_of_period, timestamp(*pnext_period), *pnext_period, *pnext_period - time_now);
+    //DEBUG(("%s (%d): using log file \"%s\" from %s (%d) until %s (%d) (for %d secs)",
+	//   timestamp(time_now), time_now, pfilename, timestamp(start_of_period), start_of_period, timestamp(*pnext_period), *pnext_period, *pnext_period - time_now));
     
     log_fd = open(pfilename, O_WRONLY|O_CREAT|O_APPEND, FILE_MODE);
     
