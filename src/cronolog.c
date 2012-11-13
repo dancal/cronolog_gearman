@@ -98,13 +98,9 @@
 /* Forward function declaration */
 char *gzcompress( char *buffer, int length, int *comprLen );
 int	new_log_file(const char *, const char *, mode_t, const char *, PERIODICITY, int, int, char *, size_t, time_t, time_t *);
+void ERROR_LOG( char *buf, ... );
 
 /* Definition of version and usage messages */
-#ifdef DEBUG
-#define debug_print(fmt, ...) fprintf(stderr, fmt, __VA_ARGS__)
-#else
-#define debug_print(fmt, ...) do {} while (0)
-#endif
 
 #define ZLIB_MODIFIER 			1000
 
@@ -141,6 +137,26 @@ int	new_log_file(const char *, const char *, mode_t, const char *, PERIODICITY, 
 /* Definition of the short and long program options */
 
 char          *short_options = "ad:eop:s:z:H:P:S:l:hVx:";
+
+void ERROR_LOG( char *buf, ... ) {
+
+	va_list argptr;
+	time_t mytime;
+    char buffer[1024];
+
+	mytime = time(NULL);
+	memset(buffer, 0, sizeof(buffer));
+
+    va_list ap;
+    va_start( ap, buf );
+    vsnprintf( buffer + strlen( buffer ), sizeof( buffer ) - strlen( buffer ), buf, ap );
+    va_end( ap );
+
+    FILE *fildes = fopen( "/var/log/cronolog_gm.log", "a");
+    fprintf(fildes, "[%s] %s\n", ctime(&mytime), buffer);
+    fclose(fildes);
+
+}
 
 #ifndef _WIN32
 struct option long_options[] =
@@ -258,7 +274,7 @@ int main(int argc, char **argv) {
 
     char 	*gzip_buf;
 	int 	gzip_buf_len;
-	char    *s1, *s2, *s3;
+	char    *s1, *s2;
 	bool 	__GEARMAN_ENABLE__;
 
 	bool 	__USEGZIP__;
@@ -284,8 +300,8 @@ int main(int argc, char **argv) {
 	s1					= iniparser_getstring(ini, "gearman:servers", NULL);
 	s2					= iniparser_getstring(ini, "gearman:workercommand", NULL);
 
+	sprintf(__HOST_ADDR, "%s", s1);
 	sprintf(__GM_WORKER, "%s", s2);
-	sprintf(__HOST_ADDR, "%s", s3);
 
     __HOST_PORT			= iniparser_getint(ini, "gearman:port", 4730);
 
@@ -399,7 +415,7 @@ int main(int argc, char **argv) {
 		    exit(1);
 		}
 		time_offset = time_now - time(NULL);
-		debug_print("Using offset of %d seconds from real time", time_offset);
+		DEBUG(("Using offset of %d seconds from real time", time_offset));
     }
 
     /* The template should be the only argument.
@@ -410,7 +426,7 @@ int main(int argc, char **argv) {
     if (periodicity == UNKNOWN) {
 		periodicity = determine_periodicity(template);
     }
-    debug_print("periodicity = %d %s", period_multiple, periods[periodicity]);
+    DEBUG(("periodicity = %d %s", period_multiple, periods[periodicity]));
 
     if (period_delay) {
 		if ( (period_delay_units > periodicity) || (   period_delay_units == periodicity && abs(period_delay)  >= period_multiple)) {
@@ -419,7 +435,7 @@ int main(int argc, char **argv) {
 		}		
 		period_delay *= period_seconds[period_delay_units];
     }
-    debug_print("Rotation period is per %d %s", period_multiple, periods[periodicity]);
+    DEBUG(("Rotation period is per %d %s", period_multiple, periods[periodicity]));
 
     /* Loop, waiting for data on standard input */
     for (;;) {
@@ -454,7 +470,7 @@ int main(int argc, char **argv) {
 		    log_fd = new_log_file(template, linkname, linktype, prevlinkname, periodicity, period_multiple, period_delay, filename, sizeof (filename), time_now, &next_period);
 		}
 
-		//debug_print("%s (%d): wrote message; next period starts at %s (%d) in %d secs\n", timestamp(time_now), time_now,  timestamp(next_period), next_period, next_period - time_now);
+		DEBUG(("%s (%d): wrote message; next period starts at %s (%d) in %d secs\n", timestamp(time_now), time_now,  timestamp(next_period), next_period, next_period - time_now));
 
 		/* Write out the log data to the current log file.
 		 */
@@ -467,7 +483,7 @@ int main(int argc, char **argv) {
 		if ( __GEARMAN_ENABLE__ ) {
 
 			client = gearman_client_create(NULL);
-
+			
 	    	gearman_client_set_timeout( client, __GEARMAN_TIMEOUT__ );
 
 			gearman_ret	= gearman_client_add_server( client, __HOST_ADDR, __HOST_PORT );
@@ -484,11 +500,11 @@ int main(int argc, char **argv) {
 				if ( gearman_ret == GEARMAN_SUCCESS ) {
 					gearman_client_run_tasks( client );
 				} else {
-	        		debug_print("gearman_client_create %d", 1);
+	        		//ERROR_LOG("gearman_client_add_server error %d", 1);
 	  			}
 
 			} else {
-	        	debug_print("gearman_client_create %d", 1);
+	        	//ERROR_LOG("gearman_client_create error %d", 2);
 			}
 
 			gearman_client_free( client );
@@ -526,8 +542,8 @@ int new_log_file(const char *template, const char *linkname, mode_t linktype, co
     strftime(pfilename, BUFSIZE, template, tm);
     *pnext_period = start_of_next_period(start_of_period, periodicity, period_multiple) + period_delay;
     
-    debug_print("%s (%d): using log file \"%s\" from %s (%d) until %s (%d) (for %d secs)",
-	   timestamp(time_now), time_now, pfilename, timestamp(start_of_period), start_of_period, timestamp(*pnext_period), *pnext_period, *pnext_period - time_now);
+    DEBUG(("%s (%d): using log file \"%s\" from %s (%d) until %s (%d) (for %d secs)",
+	   timestamp(time_now), time_now, pfilename, timestamp(start_of_period), start_of_period, timestamp(*pnext_period), *pnext_period, *pnext_period - time_now));
     
     log_fd = open(pfilename, O_WRONLY|O_CREAT|O_APPEND, FILE_MODE);
     
