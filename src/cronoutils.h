@@ -82,6 +82,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <sys/stat.h>
 #ifndef _WIN32
 #include <unistd.h>
 #else
@@ -175,6 +176,7 @@ char 		*timestamp(time_t thetime);
 char 		*str_token( char **c, char delim );
 char 		*replaceAll(char *s, const char *olds, const char *news);
 int 		explode(char ***arr_ptr, char *str, char delimiter);
+int 		file_exists (char * fileName);
 
 /* Global variables */
 

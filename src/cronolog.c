@@ -83,7 +83,6 @@
  */
 
 #include "cronoutils.h"
-#include "../lib/getopt.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -93,24 +92,12 @@
 #include <zlib.h>
 #include <libgearman/gearman.h>
 
+#include "../lib/getopt.h"
 #include "iniparser.h"
 
 /* Forward function declaration */
 char *gzcompress( char *buffer, int length, int *comprLen );
 int	new_log_file(const char *, const char *, mode_t, const char *, PERIODICITY, int, int, char *, size_t, time_t, time_t *);
-
-//global var
-gearman_client_st __GCLIENT__;
-
-int __GEARMAN_TIMEOUT__;
-
-bool __USEGZIP__;
-bool __GEARMAN_STATUS__;
-bool __GEARMAN_ENABLE__;
-
-char *__SERVERS__;
-char *__JOB_HANDLE__;
-char *__GM_WORKER__;
 
 /* Definition of version and usage messages */
 #ifdef DEBUG
@@ -246,31 +233,6 @@ char *gzcompress( char *buffer, int length, int *comprLen ) {
 
 }
 
-int createGearmanClient() {
-
-	gearman_return_t ret;
-
-    if (gearman_client_create(&__GCLIENT__) == NULL) {
-        debug_print("gearman_client_create %d", 1);
-		return false;
-    } else {
-
-    	char * server  = strdup( __SERVERS__ );
-	    char * host    = str_token( &server, ':' );
-    	in_port_t port = ( in_port_t ) atoi( str_token( &server, 0 ) );
-
-	    gearman_client_set_timeout( &__GCLIENT__, __GEARMAN_TIMEOUT__ );
-	    ret = gearman_client_add_server(&__GCLIENT__, host, port);
-    	if (ret != GEARMAN_SUCCESS) {
-        	debug_print("gearman_client_add_server %d", 2);
-			return false;
-    	}
-
-	}
-
-	return true;
-}
-
 /* Main function.
  */
 int main(int argc, char **argv) {
@@ -296,16 +258,42 @@ int main(int argc, char **argv) {
 
     char 	*gzip_buf;
 	int 	gzip_buf_len;
+	char    *s1, *s2, *s3;
+	bool 	__GEARMAN_ENABLE__;
 
+	bool 	__USEGZIP__;
+	int 	__GEARMAN_TIMEOUT__;
+
+	char 	__HOST_ADDR[128];
+	char 	__GM_WORKER[128];
+	in_port_t __HOST_PORT;
+
+	gearman_client_st *client;
     gearman_return_t gearman_ret;
 
+	memset(__HOST_ADDR, 0, sizeof(__HOST_ADDR) );
+	memset(__GM_WORKER, 0, sizeof(__GM_WORKER) );
+
+	if ( !file_exists( "/etc/cronolog_gm.ini" ) ) {
+		fprintf(stderr, "need /etc/cronolog_gm.ini %d\n", 1);
+		exit(0);
+	}
+
     dictionary *ini     = iniparser_load("/etc/cronolog_gm.ini");
-    __SERVERS__         = iniparser_getstring(ini, "gearman:servers", NULL);
-    __GM_WORKER__       = iniparser_getstring(ini, "gearman:workercommand", NULL);
+
+	s1					= iniparser_getstring(ini, "gearman:servers", NULL);
+	s2					= iniparser_getstring(ini, "gearman:workercommand", NULL);
+
+	sprintf(__GM_WORKER, "%s", s2);
+	sprintf(__HOST_ADDR, "%s", s3);
+
+    __HOST_PORT			= iniparser_getint(ini, "gearman:port", 4730);
 
     __USEGZIP__         = iniparser_getboolean(ini, "gearman:usegzip", false);
     __GEARMAN_ENABLE__	= iniparser_getboolean(ini, "gearman:enable", true);
     __GEARMAN_TIMEOUT__ = iniparser_getint(ini, "gearman:timeout", 3000);
+
+	iniparser_freedict(ini);
 
 #ifndef _WIN32
     while ((ch = getopt_long(argc, argv, short_options, long_options, NULL)) != EOF)
@@ -433,16 +421,6 @@ int main(int argc, char **argv) {
     }
     debug_print("Rotation period is per %d %s", period_multiple, periods[periodicity]);
 
-	//gearman client create
-	if ( __GEARMAN_ENABLE__ ) {
-
-		__GEARMAN_STATUS__ = createGearmanClient();
-		if ( !__GEARMAN_STATUS__ ) {
-    		debug_print("createGearmanClient Error %d", 3);
-		}
-
-	}
-
     /* Loop, waiting for data on standard input */
     for (;;) {
 
@@ -465,6 +443,7 @@ int main(int argc, char **argv) {
 		 * open, close the log file
 		 */
 		if ((time_now >= next_period) && (log_fd >= 0)) {
+
 		    close(log_fd);
 		    log_fd = -1;
 		}
@@ -484,18 +463,35 @@ int main(int argc, char **argv) {
 		    exit(5);
 		}
 
-		if ( __GEARMAN_ENABLE__ && __GEARMAN_STATUS__ && n_bytes_read > 10 ) {
+		//gearman client create
+		if ( __GEARMAN_ENABLE__ ) {
 
-			//send gearman-server
-			__JOB_HANDLE__		= emalloc(GEARMAN_JOB_HANDLE_SIZE);
-			if ( __USEGZIP__ ) {
-				gzip_buf		= gzcompress( read_buf, n_bytes_read, &gzip_buf_len ); 
-	    		gearman_ret = gearman_client_do_background(&__GCLIENT__, __GM_WORKER__, NULL, ( void * )gzip_buf, gzip_buf_len, __JOB_HANDLE__ );
+			client = gearman_client_create(NULL);
+
+	    	gearman_client_set_timeout( client, __GEARMAN_TIMEOUT__ );
+
+			gearman_ret	= gearman_client_add_server( client, __HOST_ADDR, __HOST_PORT );
+			if (gearman_ret == GEARMAN_SUCCESS) {
+
+				//send gearman-server
+				if ( __USEGZIP__ ) {
+					gzip_buf		= gzcompress( read_buf, n_bytes_read, &gzip_buf_len ); 
+	    			gearman_ret 	= gearman_client_do_background( client, __GM_WORKER, NULL, ( void * )gzip_buf, gzip_buf_len, NULL );
+				} else {
+			    	gearman_ret 	= gearman_client_do_background( client, __GM_WORKER, NULL, ( void * )read_buf, n_bytes_read, NULL );
+				}
+
+				if ( gearman_ret == GEARMAN_SUCCESS ) {
+					gearman_client_run_tasks( client );
+				} else {
+	        		debug_print("gearman_client_create %d", 1);
+	  			}
+
 			} else {
-	    		gearman_ret = gearman_client_do_background(&__GCLIENT__, __GM_WORKER__, NULL, ( void * )read_buf, n_bytes_read, __JOB_HANDLE__ );
+	        	debug_print("gearman_client_create %d", 1);
 			}
-			gearman_client_run_tasks( &__GCLIENT__ );
-			efree(__JOB_HANDLE__);
+
+			gearman_client_free( client );
 			efree(gzip_buf);
 
 		}
@@ -503,10 +499,6 @@ int main(int argc, char **argv) {
 		//gearman client end
 
     }
-
-	gearman_client_free(&__GCLIENT__);
-
-	iniparser_freedict(ini);
 
     /* NOTREACHED */
     return 1;
