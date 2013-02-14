@@ -22,8 +22,9 @@
 ###vi /etc/cronolog_gm.ini
 ####[gearman]
 ####enable=1
-####servers="127.0.0.1:4730"
-####workercommand="cronolog_svr"
+####servers=172.16.7.221
+####port=4730
+####workercommand="cronolog_write"
 ####timeout=1000
 ####usegzip=1
 ####debug=1
