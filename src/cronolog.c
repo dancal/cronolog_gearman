@@ -286,6 +286,7 @@ int main(int argc, char **argv) {
 
 	bool 	__GEARMAN_ENABLE__;
 	bool 	__USEGZIP__;
+	bool	__USEFILELOG__;
 	int     __HOST_ARRAY_CNT  	= 0;
 	int 	__GEARMAN_TIMEOUT = 0;
 	int		__ROUND_HOST		= 0;
@@ -335,6 +336,7 @@ int main(int argc, char **argv) {
 
     __HOST_PORT			= iniparser_getint(ini, "gearman:port", 4730);
 
+    __USEFILELOG__		= iniparser_getboolean(ini, "gearman:usefilelog", true);
     __USEGZIP__         = iniparser_getboolean(ini, "gearman:usegzip", false);
     __GEARMAN_ENABLE__	= iniparser_getboolean(ini, "gearman:enable", true);
     __GEARMAN_TIMEOUT = iniparser_getint(ini, "gearman:timeout", 3000);
@@ -488,27 +490,26 @@ int main(int argc, char **argv) {
 
 		time_now = time(NULL) + time_offset;
 	
-		/* If the current period has finished and there is a log file
-		 * open, close the log file
-		 */
-		if ((time_now >= next_period) && (log_fd >= 0)) {
+		if ( __USEFILELOG__ ) {
 
-		    close(log_fd);
-		    log_fd = -1;
-		}
+			/* If the current period has finished and there is a log file open, close the log file */
+			if ((time_now >= next_period) && (log_fd >= 0)) {
+			    close(log_fd);
+		    	log_fd = -1;
+			}
 	
-		/* If there is no log file open then open a new one.
-		 */
-		if (log_fd < 0) {
-		    log_fd = new_log_file(template, linkname, linktype, prevlinkname, periodicity, period_multiple, period_delay, filename, sizeof (filename), time_now, &next_period);
-		}
+			/* If there is no log file open then open a new one. */
+			if (log_fd < 0) {
+		    	log_fd = new_log_file(template, linkname, linktype, prevlinkname, periodicity, period_multiple, period_delay, filename, sizeof (filename), time_now, &next_period);
+			}	
 
-		//DEBUG(("%s (%d): wrote message; next period starts at %s (%d) in %d secs\n", timestamp(time_now), time_now,  timestamp(next_period), next_period, next_period - time_now));
-		/* Write out the log data to the current log file.
-		 */
-		if (write(log_fd, read_buf, n_bytes_read) != n_bytes_read) {
-		    perror(filename);
-		    exit(5);
+			//DEBUG(("%s (%d): wrote message; next period starts at %s (%d) in %d secs\n", timestamp(time_now), time_now,  timestamp(next_period), next_period, next_period - time_now));
+			/* Write out the log data to the current log file. */
+			if (write(log_fd, read_buf, n_bytes_read) != n_bytes_read) {
+			    perror(filename);
+			    exit(5);
+			}
+
 		}
 
 		//gearman client create

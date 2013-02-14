@@ -26,6 +26,7 @@
 ####port=4730
 ####workercommand="cronolog_write"
 ####timeout=1000
+####usefilelog=1
 ####usegzip=1
 ####debug=1
 ####debugfile=/var/log/cronolog_gearman.log
