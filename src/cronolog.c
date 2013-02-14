@@ -282,7 +282,7 @@ int main(int argc, char **argv) {
 
     char 	*gzip_buf;
 	int 	gzip_buf_len;
-	char    *s1;
+	char    *s1, *s2;
 
 	bool 	__GEARMAN_ENABLE__;
 	bool 	__USEGZIP__;
@@ -292,8 +292,7 @@ int main(int argc, char **argv) {
 	int		__ROUND_HOST		= 0;
 	int 	__ROUNDROBIN_COUNT  = 0;
 
-	//char 	__HOST_ADDR[128];
-	char    *__HOST_ARRAY[] = {};
+	char    **__HOST_ARRAY;
 
 	char 	__GM_WORKER[128];
 	in_port_t __HOST_PORT;
@@ -301,10 +300,7 @@ int main(int argc, char **argv) {
 	gearman_client_st *client;
     gearman_return_t gearman_ret;
 
-	//memset(__HOST_ADDR, 0, sizeof(__HOST_ADDR) );
 	memset(__GM_WORKER, 0, sizeof(__GM_WORKER) );
-
-	memset(__HOST_ARRAY, 0x00, sizeof(__HOST_ARRAY) );
 
 	if ( !file_exists( "/etc/cronolog_gm.ini" ) ) {
 		fprintf(stderr, "need /etc/cronolog_gm.ini %d\n", 1);
@@ -313,26 +309,11 @@ int main(int argc, char **argv) {
 
     dictionary *ini     = iniparser_load("/etc/cronolog_gm.ini");
 
-	__HOST_ARRAY[__HOST_ARRAY_CNT++]	= iniparser_getstring(ini, "gearman:servers", NULL);
-	char* ptr 							= iniparser_getstring(ini, "gearman:servers", NULL);
-	while(*ptr) {
-    	if(*ptr == ',') {
-        	*ptr = 0;
-	        __HOST_ARRAY[__HOST_ARRAY_CNT++] = ptr + 1;
-    	}
-	    ptr++;
-	}
+	s1					= iniparser_getstring(ini, "gearman:servers", NULL);
+	__HOST_ARRAY_CNT	= explode( &__HOST_ARRAY, s1, ',' );
 
-/*
-	int i=0;
-	for(i=0;i<__HOST_ARRAY_CNT;i++) {
-		printf("==%s\n", __HOST_ARRAY[i]);
-	}
-	exit(0);
-*/
-
-	s1					= iniparser_getstring(ini, "gearman:workercommand", NULL);
-	sprintf(__GM_WORKER, "%s", s1);
+	s2					= iniparser_getstring(ini, "gearman:workercommand", NULL);
+	sprintf(__GM_WORKER, "%s", s2);
 
     __HOST_PORT			= iniparser_getint(ini, "gearman:port", 4730);
 
@@ -521,6 +502,8 @@ int main(int argc, char **argv) {
 
 			__ROUND_HOST	= (int)__ROUNDROBIN_COUNT % (int)__HOST_ARRAY_CNT; 
 			gearman_ret	= gearman_client_add_server( client, __HOST_ARRAY[__ROUND_HOST], __HOST_PORT );
+	        DEBUG_LOG("[%s]gearman connect", __HOST_ARRAY[__ROUND_HOST]);
+
 			if (gearman_ret == GEARMAN_SUCCESS) {
 
 				//send gearman-server
@@ -534,11 +517,11 @@ int main(int argc, char **argv) {
 				if ( gearman_ret == GEARMAN_SUCCESS ) {
 					gearman_client_run_tasks( client );
 				} else {
-	        		DEBUG_LOG("gearman_client_add_server error %d", 1);
+	        		DEBUG_LOG("[%s]gearman error %d", __HOST_ARRAY[__ROUND_HOST], gearman_ret);
 	  			}
 
 			} else {
-	        	DEBUG_LOG("gearman_client_create error %d", 2);
+	        	DEBUG_LOG("[%s]gearman error %d", __HOST_ARRAY[__ROUND_HOST], 2);
 			}
 
 			gearman_client_free( client );
