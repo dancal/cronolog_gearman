@@ -22,7 +22,7 @@
 ###vi /etc/cronolog_gm.ini
 ####[gearman]
 ####enable=1
-####servers=172.16.7.221
+####servers=172.16.7.221,172.16.7.222,172.16.7.223,172.16.7.224
 ####port=4730
 ####workercommand="cronolog_write"
 ####timeout=1000
